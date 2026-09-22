@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DXD Studio</title>
+    <!-- Importar Firebase desde la nube -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+    <style>
+        :root {
+            --primary: #00a884;
+            --bg: #111b21;
+            --panel: #202c33;
+            --text: #e9edef;
+            --text-sec: #8696a0;
+            --border: #222d34;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+        body { background-color: var(--bg); color: var(--text); padding-bottom: 40px; }
+        
+        .container { max-width: 480px; margin: 0 auto; padding: 15px; }
+        
+        header { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 15px; }
+        h1 { font-size: 20px; color: var(--primary); }
+        .nav-btns button { background: none; border: none; color: var(--text-sec); font-size: 14px; cursor: pointer; margin-left: 10px; }
+        .nav-btns button.active { color: var(--primary); font-weight: bold; }
+
+        .view { display: none; }
+        .view.active { display: block; }
+
+        .card { background-color: var(--panel); padding: 20px; border-radius: 10px; margin-top: 15px; }
+        input, select { width: 100%; padding: 12px; margin: 8px 0 15px 0; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; color: var(--text); }
+        button.btn { width: 100%; padding: 12px; background-color: var(--primary); color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; }
+        
+        .avatar-preview { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin: 10px auto; display: block; border: 2px solid var(--primary); }
+        .image-picker-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; max-height: 150px; overflow-y: auto; }
+        .image-picker-grid img { width: 100%; height: 60px; object-fit: cover; border-radius: 4px; cursor: pointer; border: 2px solid transparent; }
+        .image-picker-grid img:hover { border-color: var(--primary); }
+
+        .search-box { display: flex; gap: 5px; margin-bottom: 15px; }
+        .search-box input { margin: 0; }
+        
+        .contact-item { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid var(--border); gap: 12px; }
+        .contact-item img { width: 50px; height: 50px; border-radius: 50%; object-fit: cover; }
+        .contact-info h3 { font-size: 16px; }
+        .contact-info p { font-size: 12px; color: var(--text-sec); }
+        .no-data { text-align: center; color: var(--text-sec); margin-top: 40px; }
+        
+        .error-msg { color: #ff5555; font-size: 12px; margin-top: -10px; margin-bottom: 10px; display: none; }
+        .loading-db { text-align: center; color: var(--text-sec); margin-top: 20px; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>DXD Studio</h1>
+        <div class="nav-btns">
+            <button id="nav-chat" class="active" onclick="switchView('chat')">Chats</button>
+            <button id="nav-reg" onclick="switchView('reg')">Registrarse</button>
+            <button id="nav-img" onclick="switchView('img-picker')">DXD Images</button>
+        </div>
+    </header>
+
+    <!-- VISTA 1: LISTA DE REGISTRADOS EN LA NUBE -->
+    <div id="view-chat" class="view active">
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="🔍 Buscar por nombre o ID..." onkeyup="filterContacts()">
+        </div>
+        <div id="loadingText" class="loading-db">Conectando con la base de datos...</div>
+        <div id="contactsList"></div>
+    </div>
+
+    <!-- VISTA 2: FORMULARIO DE REGISTRO -->
+    <div id="view-reg" class="view">
+        <div class="card">
+            <h2>Registro de Usuario</h2>
+            <form id="regForm" onsubmit="registerUser(event)">
+                <label>Correo Electrónico:</label>
+                <input type="email" id="email" required>
+                <div id="emailError" class="error-msg">Correo no encontrado</div>
+
+                <label>Nombre de usuario:</label>
+                <input type="text" id="username" required>
+
+                <label>País:</label>
+                <select id="country">
+                    <option value="México">México</option>
+                    <option value="Argentina">Argentina</option>
+                    <option value="Colombia">Colombia</option>
+                    <option value="España">España</option>
+                    <option value="Estados Unidos">Estados Unidos</option>
+                    <option value="Otro">Otro</option>
+                </select>
+
+                <label>Foto de Perfil:</label>
+                <img id="selectedAvatarPreview" class="avatar-preview" src="https://via.placeholder.com/80" alt="Preview">
+                <input type="hidden" id="avatarUrl" required>
+                
+                <button type="button" class="btn" style="background:#222d34; margin-bottom:10px;" onclick="switchView('img-picker')">Elegir desde DXD Images</button>
+                <button type="submit" class="btn">Completar Registro</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- VISTA 3: BUSCADOR DE IMÁGENES (DXD IMAGES) -->
+    <div id="view-img-picker" class="view">
+        <div class="card" style="text-align: center;">
+            <h2 style="color: var(--primary); margin-bottom: 10px;">DXD Images 🔍</h2>
+            <p style="font-size: 13px; color: var(--text-sec); margin-bottom: 15px;">Sube una foto o selecciona un avatar:</p>
+            
+            <input type="file" id="localFile" accept="image/*" onchange="loadLocalImage(event)" style="margin-bottom: 10px;">
+            
+            <div class="image-picker-grid" id="presetImages">
+                <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150" onclick="selectAvatar(this.src)">
+                <img src="https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150" onclick="selectAvatar(this.src)">
+                <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150" onclick="selectAvatar(this.src)">
+                <img src="https://images.unsplash.com/photo-1527980965255-d3b416303d12?w=150" onclick="selectAvatar(this.src)">
+                <img src="https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150" onclick="selectAvatar(this.src)">
+                <img src="https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=150" onclick="selectAvatar(this.src)">
+            </div>
+            
+            <button class="btn" style="margin-top: 15px;" onclick="switchView('reg')">Confirmar y Volver</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // CONFIGURACIÓN DE FIREBASE (BASE DE DATOS)
+    // ==========================================
+    // Nota: Aquí conectarás tu propia base de datos gratuita de Firebase
+    const firebaseConfig = {
+        apiKey: "TU_API_KEY",
+        authDomain: "tu-proyecto.firebaseapp.com",
+        databaseURL: "https://tu-proyecto-default-rtdb.firebaseio.com",
+        projectId: "tu-proyecto",
+        storageBucket: "tu-proyecto.appspot.com",
+        messagingSenderId: "123456789",
+        appId: "1:123456789:web:abcdef"
+    };
+
+    // Inicializar Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    let users = [];
+
+    // Escuchar cambios en tiempo real desde la nube de Firebase
+    db.ref('users').on('value', (snapshot) => {
+        const data = snapshot.val();
+        users = [];
+        if (data) {
+            Object.keys(data).forEach(key => {
+                users.push(data[key]);
+            });
+        }
+        document.getElementById('loadingText').style.display = 'none';
+        renderContacts();
+    });
+
+    function switchView(viewName) {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.querySelectorAll('.nav-btns button').forEach(b => b.classList.remove('active'));
+        
+        if(viewName === 'chat') {
+            document.getElementById('view-chat').classList.add('active');
+            document.getElementById('nav-chat').classList.add('active');
+        } else if(viewName === 'reg') {
+            document.getElementById('view-reg').classList.add('active');
+            document.getElementById('nav-reg').classList.add('active');
+        } else if(viewName === 'img-picker') {
+            document.getElementById('view-img-picker').classList.add('active');
+            document.getElementById('nav-img').classList.add('active');
+        }
+    }
+
+    function selectAvatar(url) {
+        document.getElementById('avatarUrl').value = url;
+        document.getElementById('selectedAvatarPreview').src = url;
+        switchView('reg');
+    }
+
+    function loadLocalImage(event) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                selectAvatar(e.target.result);
+            }
+            reader.readAsDataURL(file);
+        }
+    }
+
+    function registerUser(event) {
+        event.preventDefault();
+        const email = document.getElementById('email').value.trim();
+        const username = document.getElementById('username').value.trim();
+        const country = document.getElementById('country').value;
+        const avatar = document.getElementById('avatarUrl').value;
+        const emailError = document.getElementById('emailError');
+
+        // Validación secreta del correo
+        if (!email.endsWith('.com')) {
+            emailError.style.display = 'block';
+            return;
+        } else {
+            emailError.style.display = 'none';
+        }
+
+        // Generar ID único basado en el total de usuarios en la nube
+        const nextIdNum = users.length + 1;
+        const uniqueId = "DXD-" + String(nextIdNum).padStart(3, '0');
+
+        const newUser = {
+            id: uniqueId,
+            email: email,
+            username: username,
+            country: country,
+            avatar: avatar
+        };
+
+        // Guardar directamente en la base de datos de Firebase en la nube
+        db.ref('users/' + uniqueId).set(newUser, (error) => {
+            if (error) {
+                alert("Error al registrar en la nube.");
+            } else {
+                alert("¡Registro exitoso! Tu ID asignado es: " + uniqueId);
+                document.getElementById('regForm').reset();
+                document.getElementById('selectedAvatarPreview').src = "https://via.placeholder.com/80";
+                document.getElementById('avatarUrl').value = "";
+                switchView('chat');
+            }
+        });
+    }
+
+    function renderContacts(filterText = "") {
+        const listContainer = document.getElementById('contactsList');
+        listContainer.innerHTML = "";
+
+        let filtered = users;
+        if (filterText.trim() !== "") {
+            const query = filterText.toLowerCase();
+            filtered = users.filter(u => 
+                u.username.toLowerCase().includes(query) || 
+                u.id.toLowerCase().includes(query)
+            );
+        }
+
+        if (filtered.length === 0) {
+            listContainer.innerHTML = `<div class="no-data"><h3>No hay registros todavía</h3><p>Usa la pestaña 'Registrarse' para agregar el primer usuario.</p></div>`;
+            return;
+        }
+
+        filtered.forEach(user => {
+            const item = document.createElement('div');
+            item.className = 'contact-item';
+            item.innerHTML = `
+                <img src="${user.avatar}" alt="Avatar">
+                <div class="contact-info">
+                    <h3>${user.username} <span style="font-size:11px; background:#00a884; color:white; padding:2px 6px; border-radius:4px;">${user.id}</span></h3>
+                    <p>${user.country} • ${user.email}</p>
+                </div>
+            `;
+            listContainer.appendChild(item);
+        });
+    }
+
+    function filterContacts() {
+        const query = document.getElementById('searchInput').value;
+        renderContacts(query);
+    }
+</script>
+
+</body>
+</html>
